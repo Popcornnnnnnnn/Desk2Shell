@@ -1,0 +1,14 @@
+output/
+.cache/
+.build/
+DerivedData/
+artifacts/
+macos/Desk2ShellApp/.swiftpm/
+macos/Desk2ShellApp/Sources/Desk2ShellApp/Resources/*.exe
+windows/**/bin/
+windows/**/obj/
+*.zip
+*.d2s
+*.key
+*.secret
+.DS_Store

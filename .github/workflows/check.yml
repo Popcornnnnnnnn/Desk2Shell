@@ -1,0 +1,23 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test --package-path macos/Desk2ShellApp
+      - run: ./tests/security-smoke.sh
+
+  windows-core:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet run --project windows/Desk2Shell.Core.Tests/Desk2Shell.Core.Tests.csproj
+      - run: dotnet build windows/Desk2Shell.Bootstrap/Desk2Shell.Bootstrap.csproj -c Release

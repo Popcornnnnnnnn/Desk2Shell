@@ -1,0 +1,83 @@
+name: signed-release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Require signing credentials
+        shell: pwsh
+        env:
+          CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        run: if (-not $env:CERTIFICATE -or -not $env:PASSWORD) { throw 'Windows signing credentials are required.' }
+      - run: dotnet publish windows/Desk2Shell.Bootstrap/Desk2Shell.Bootstrap.csproj -c Release -r win-x64 --self-contained true -o artifacts/windows
+      - name: Sign Windows bootstrap
+        shell: pwsh
+        env:
+          CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        run: |
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\desk2shell.pfx", [Convert]::FromBase64String($env:CERTIFICATE))
+          & signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f "$env:RUNNER_TEMP\desk2shell.pfx" /p $env:PASSWORD "artifacts\windows\Desk2Shell Bootstrap.exe"
+          & signtool verify /pa "artifacts\windows\Desk2Shell Bootstrap.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-bootstrap
+          path: artifacts/windows/Desk2Shell Bootstrap.exe
+
+  macos:
+    needs: windows
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-bootstrap
+          path: macos/Desk2ShellApp/Sources/Desk2ShellApp/Resources
+      - name: Import Apple signing identity
+        env:
+          CERTIFICATE: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          test -n "$CERTIFICATE" && test -n "$PASSWORD"
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/desk2shell.p12"
+          security create-keychain -p build desk2shell.keychain
+          security default-keychain -s desk2shell.keychain
+          security unlock-keychain -p build desk2shell.keychain
+          security import "$RUNNER_TEMP/desk2shell.p12" -k desk2shell.keychain -P "$PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k build desk2shell.keychain
+      - name: Build and sign Mac app
+        env:
+          DESK2SHELL_APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_NAME }}
+        run: ./scripts/build-macos-app.sh artifacts
+      - name: Notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          ditto -c -k --keepParent artifacts/Desk2Shell.app artifacts/Desk2Shell-macOS.zip
+          xcrun notarytool submit artifacts/Desk2Shell-macOS.zip --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple artifacts/Desk2Shell.app
+          codesign --verify --deep --strict artifacts/Desk2Shell.app
+      - name: Assemble release
+        run: |
+          cp "macos/Desk2ShellApp/Sources/Desk2ShellApp/Resources/Desk2Shell Bootstrap.exe" artifacts/
+          shasum -a 256 "artifacts/Desk2Shell Bootstrap.exe" artifacts/Desk2Shell-macOS.zip > artifacts/SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/Desk2Shell-macOS.zip
+            artifacts/Desk2Shell Bootstrap.exe
+            artifacts/SHA256SUMS

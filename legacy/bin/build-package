@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+hostname=""
+public_key_path="${HOME}/.ssh/id_ed25519.pub"
+auth_key_file=""
+windows_user=""
+controller_ip=""
+include_installer=1
+output_path=""
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./bin/build-package --hostname NAME [options]
+
+Options:
+  --hostname NAME          Tailscale/MagicDNS device name (required)
+  --public-key PATH        SSH public key (default: ~/.ssh/id_ed25519.pub)
+  --auth-key-file PATH     Read the Tailscale Auth Key from a protected file
+  --windows-user NAME      Windows account to authorize (default: account running setup)
+  --controller-ip IP       Mac Tailscale IPv4 allowed through Windows Firewall
+  --output PATH            Output zip path
+  --no-installer           Do not bundle the official Tailscale MSI
+  -h, --help               Show this help
+
+If --auth-key-file is omitted, the key is read interactively without echo.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --hostname) hostname="${2:-}"; shift 2 ;;
+    --public-key) public_key_path="${2:-}"; shift 2 ;;
+    --auth-key-file) auth_key_file="${2:-}"; shift 2 ;;
+    --windows-user) windows_user="${2:-}"; shift 2 ;;
+    --controller-ip) controller_ip="${2:-}"; shift 2 ;;
+    --output) output_path="${2:-}"; shift 2 ;;
+    --no-installer) include_installer=0; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+if [[ ! "$hostname" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]; then
+  printf 'Invalid --hostname. Use 1-63 letters, digits, or hyphens.\n' >&2
+  exit 2
+fi
+
+if [[ ! -f "$public_key_path" ]]; then
+  printf 'SSH public key not found: %s\n' "$public_key_path" >&2
+  exit 2
+fi
+
+public_key="$(awk 'NF { print; exit }' "$public_key_path")"
+case "$public_key" in
+  ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*\ *|sk-ssh-ed25519@openssh.com\ *|sk-ecdsa-sha2-nistp256@openssh.com\ *) ;;
+  *) printf 'Unsupported or malformed SSH public key: %s\n' "$public_key_path" >&2; exit 2 ;;
+esac
+
+if [[ -n "$auth_key_file" ]]; then
+  if [[ ! -f "$auth_key_file" ]]; then
+    printf 'Auth key file not found: %s\n' "$auth_key_file" >&2
+    exit 2
+  fi
+  auth_key="$(tr -d '\r\n' < "$auth_key_file")"
+else
+  if [[ ! -t 0 ]]; then
+    printf 'Interactive Auth Key input requires a terminal; use --auth-key-file.\n' >&2
+    exit 2
+  fi
+  IFS= read -r -s -p 'Paste one-off Tailscale Auth Key: ' auth_key
+  printf '\n'
+fi
+
+case "$auth_key" in
+  tskey-auth-*|tskey-client-*) ;;
+  *) printf 'The supplied value does not look like a Tailscale Auth Key.\n' >&2; exit 2 ;;
+esac
+
+if [[ -z "$controller_ip" ]]; then
+  if command -v tailscale >/dev/null 2>&1; then
+    controller_ip="$(tailscale ip -4 2>/dev/null | awk 'NF { print; exit }')"
+  elif [[ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]]; then
+    controller_ip="$(/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4 2>/dev/null | awk 'NF { print; exit }')"
+  fi
+fi
+
+if [[ ! "$controller_ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+  printf 'Could not determine a valid controller Tailscale IPv4; pass --controller-ip.\n' >&2
+  exit 2
+fi
+
+for octet in ${controller_ip//./ }; do
+  if (( octet < 0 || octet > 255 )); then
+    printf 'Invalid controller IPv4: %s\n' "$controller_ip" >&2
+    exit 2
+  fi
+done
+
+command -v jq >/dev/null 2>&1 || { printf 'jq is required.\n' >&2; exit 2; }
+command -v zip >/dev/null 2>&1 || { printf 'zip is required.\n' >&2; exit 2; }
+
+timestamp="$(date '+%Y%m%d-%H%M%S')"
+package_name="todesk-ssh-${hostname}"
+if [[ -z "$output_path" ]]; then
+  output_path="${project_dir}/output/${package_name}-${timestamp}.zip"
+fi
+mkdir -p "$(dirname "$output_path")" "${project_dir}/.cache"
+output_path="$(cd "$(dirname "$output_path")" && pwd)/$(basename "$output_path")"
+
+tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/todesk-ssh-bootstrap.XXXXXX")"
+trap 'rm -rf "$tmp_root"; unset auth_key' EXIT
+payload_dir="${tmp_root}/${package_name}"
+mkdir -p "$payload_dir"
+
+cp "${project_dir}/templates/bootstrap.ps1" "$payload_dir/bootstrap.ps1"
+cp "${project_dir}/templates/rollback.ps1" "$payload_dir/rollback.ps1"
+cp "${project_dir}/templates/RUN-AS-ADMIN.cmd" "$payload_dir/RUN-AS-ADMIN.cmd"
+cp "${project_dir}/templates/README.txt" "$payload_dir/README.txt"
+
+jq -n \
+  --arg auth_key "$auth_key" \
+  --arg ssh_public_key "$public_key" \
+  --arg hostname "$hostname" \
+  --arg windows_user "$windows_user" \
+  --arg controller_ip "$controller_ip" \
+  '{schema_version:1,auth_key:$auth_key,ssh_public_key:$ssh_public_key,hostname:$hostname,windows_user:$windows_user,controller_ip:$controller_ip}' \
+  > "$payload_dir/config.json"
+
+jq -n \
+  --arg ssh_public_key "$public_key" \
+  --arg windows_user "$windows_user" \
+  '{schema_version:1,ssh_public_key:$ssh_public_key,windows_user:$windows_user}' \
+  > "$payload_dir/rollback-config.json"
+
+if (( include_installer )); then
+  installer_cache="${project_dir}/.cache/tailscale-setup-latest-amd64.msi"
+  if [[ ! -s "$installer_cache" ]]; then
+    printf 'Downloading official Tailscale Windows MSI...\n'
+    curl -fL --retry 2 --connect-timeout 15 \
+      https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi \
+      -o "$installer_cache"
+  fi
+  cp "$installer_cache" "$payload_dir/tailscale-setup-amd64.msi"
+fi
+
+(
+  cd "$tmp_root"
+  zip -q -X -r "$output_path" "$package_name"
+)
+
+unset auth_key
+printf 'Created: %s\n' "$output_path"
+printf 'Controller allowed through Windows Firewall: %s/32\n' "$controller_ip"
+printf 'Sensitive package: transfer only through the active ToDesk session and delete after SSH verification.\n'
