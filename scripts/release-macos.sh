@@ -47,6 +47,8 @@ test "$(lipo -archs "$app/Contents/MacOS/Desk2Shell")" = "arm64"
 codesign --verify --deep --strict --verbose=2 "$app"
 
 "$project_dir/scripts/create-dmg.sh" "$app" "$version" "$dmg"
+codesign --force --timestamp --sign "$identity" "$dmg"
+codesign --verify --verbose=2 "$dmg"
 xcrun notarytool submit "$dmg" --keychain-profile "$notary_profile" --wait --output-format json > "$artifact_dir/notary.json"
 test "$(plutil -extract status raw "$artifact_dir/notary.json")" = "Accepted"
 xcrun stapler staple "$dmg"
