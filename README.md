@@ -6,7 +6,13 @@
 
 Desk2Shell turns one temporary remote-desktop session into a standard, temporary SSH connection to a Windows computer. The remote-desktop product is only used to transfer and launch the bootstrap package; afterwards Codex, Claude Code, terminals, and IDEs connect using normal SSH over the user's own Tailscale network.
 
-> Status: **v0.1 developer preview**. The encrypted enrollment protocol, macOS controller, Windows bootstrap, expiry/revoke path, and build automation are implemented. Public binaries still require Apple and Windows signing credentials, and a clean Windows 10/11 test matrix has not yet been completed.
+> Status: **v0.1 developer preview**. The encrypted enrollment protocol, macOS controller, Windows bootstrap, expiry/revoke path, and build automation are implemented. The macOS app is distributed in a Developer ID signed and notarized DMG; the embedded Windows Bootstrap intentionally remains unsigned, and a clean Windows 10/11 test matrix has not yet been completed.
+
+## Preview
+
+![Desk2Shell 0.1.0 macOS controller showing target and one-time network authorization](docs/media/desk2shell-macos-v0.1.0.png)
+
+_Desk2Shell 0.1.0 developer preview on macOS. Sensitive pairing information is outside the captured area._
 
 ## Product boundary
 
