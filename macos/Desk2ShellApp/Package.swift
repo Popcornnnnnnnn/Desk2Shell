@@ -7,10 +7,19 @@ let package = Package(
     products: [
         .executable(name: "Desk2Shell", targets: ["Desk2ShellApp"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6")
+    ],
     targets: [
         .executableTarget(
             name: "Desk2ShellApp",
-            resources: [.copy("Resources")]
+            dependencies: [
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
+            resources: [.copy("Resources")],
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
+            ]
         ),
         .testTarget(
             name: "Desk2ShellAppTests",

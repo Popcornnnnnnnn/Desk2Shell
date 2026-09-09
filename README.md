@@ -50,7 +50,7 @@ For a complete unsigned developer bundle:
 ./scripts/package-release.sh
 ```
 
-Release signing is performed by `.github/workflows/release.yml` when the documented Apple and Windows signing secrets are configured. Development artifacts are deliberately labelled `UNSIGNED`.
+Public direct-download macOS releases use a Developer ID signed and notarized DMG with Sparkle automatic updates. The maintainer workflow and public identities are documented in [`docs/release.md`](docs/release.md). The `v0.1.0` developer preview intentionally carries an unsigned Windows Bootstrap, so Windows may show `Unknown publisher` or block it under managed security policy. Development artifacts remain labelled `UNSIGNED`.
 
 ## Repository layout
 

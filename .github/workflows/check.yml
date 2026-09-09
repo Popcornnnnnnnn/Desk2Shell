@@ -3,6 +3,7 @@ name: check
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   macos:
@@ -21,3 +22,9 @@ jobs:
           dotnet-version: 8.0.x
       - run: dotnet run --project windows/Desk2Shell.Core.Tests/Desk2Shell.Core.Tests.csproj
       - run: dotnet build windows/Desk2Shell.Bootstrap/Desk2Shell.Bootstrap.csproj -c Release
+      - run: dotnet publish windows/Desk2Shell.Bootstrap/Desk2Shell.Bootstrap.csproj -c Release -r win-x64 --self-contained true -o artifacts/windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-bootstrap-${{ github.sha }}
+          path: artifacts/windows/Desk2Shell Bootstrap.exe
+          if-no-files-found: error

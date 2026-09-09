@@ -5,12 +5,16 @@ project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 artifact_dir="$project_dir/artifacts"
 resource_dir="$project_dir/macos/Desk2ShellApp/Sources/Desk2ShellApp/Resources"
 rid="${DESK2SHELL_WINDOWS_RID:-win-x64}"
+bootstrap="${DESK2SHELL_WINDOWS_BOOTSTRAP:-}"
+if [[ -z "$bootstrap" || ! -f "$bootstrap" ]]; then
+  printf 'ERROR: set DESK2SHELL_WINDOWS_BOOTSTRAP to a Bootstrap built by the GitHub Windows runner.\n' >&2
+  exit 1
+fi
 
 mkdir -p "$artifact_dir" "$resource_dir"
-dotnet publish "$project_dir/windows/Desk2Shell.Bootstrap/Desk2Shell.Bootstrap.csproj" \
-  -c Release -r "$rid" --self-contained true \
-  -o "$artifact_dir/windows-$rid"
-cp "$artifact_dir/windows-$rid/Desk2Shell Bootstrap.exe" "$resource_dir/Desk2Shell Bootstrap.exe"
+mkdir -p "$artifact_dir/windows-$rid"
+cp "$bootstrap" "$artifact_dir/windows-$rid/Desk2Shell Bootstrap.exe"
+cp "$bootstrap" "$resource_dir/Desk2Shell Bootstrap.exe"
 
 "$project_dir/scripts/build-macos-app.sh" "$artifact_dir"
 

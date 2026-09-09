@@ -12,6 +12,9 @@
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>SUFeedURL</key><string>https://desk2shell-updates.popcornnn.xyz/appcast.xml</string>
+  <key>SUPublicEDKey</key><string>y6d+cwhZgH2s6gje4tiS4F5L1+WlUyZpIdq8VhlAhy8=</string>
+  <key>SUScheduledCheckInterval</key><integer>86400</integer>
   <key>NSHumanReadableCopyright</key><string>Copyright 2026 Desk2Shell contributors</string>
 </dict>
 </plist>
