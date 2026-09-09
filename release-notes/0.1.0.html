@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Desk2Shell 0.1.0</title>
+  <style>
+    :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { max-width: 680px; margin: 0 auto; padding: 24px; line-height: 1.55; }
+    h1 { font-size: 24px; }
+    .warning { padding: 14px 16px; border-radius: 10px; background: rgba(255, 159, 10, .14); }
+  </style>
+</head>
+<body>
+  <h1>Desk2Shell 0.1.0 Developer Preview</h1>
+  <p>首个公开开发者预览版，将一次远程桌面会话转换为通过用户现有 Tailscale 网络工作的临时、仅公钥 SSH 连接。</p>
+  <ul>
+    <li>加密的一次性 enrollment 与独立配对码</li>
+    <li>Windows 端独立 SSH 服务、限定范围的防火墙规则</li>
+    <li>自动过期、主动撤销和 Mac 端 SSH 验证</li>
+    <li>macOS 14+，Apple silicon</li>
+  </ul>
+  <p class="warning"><strong>预览版边界：</strong>Mac App 与 DMG 已完成 Developer ID 签名和 Apple 公证；内嵌 Windows Bootstrap 暂未签名，Windows 可能显示 <code>Unknown publisher</code> 或被受管安全策略阻止。</p>
+</body>
+</html>

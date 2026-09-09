@@ -1,0 +1,8 @@
+/appcast.xml
+  Content-Type: application/xml; charset=utf-8
+  Cache-Control: no-cache
+  X-Content-Type-Options: nosniff
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
