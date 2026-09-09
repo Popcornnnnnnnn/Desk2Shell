@@ -56,7 +56,10 @@ enum EnrollmentCrypto {
     static func makePairingCode() throws -> (key: Data, display: String) {
         var bytes = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
-            throw Desk2ShellError.commandFailed("无法生成安全随机配对码。")
+            throw Desk2ShellError.commandFailed(BilingualText(
+                "无法生成安全随机配对码。",
+                "Unable to generate a secure random pairing code."
+            ))
         }
         let compact = bytes.map { String(format: "%02X", $0) }.joined()
         let grouped = stride(from: 0, to: compact.count, by: 8).map { offset -> String in

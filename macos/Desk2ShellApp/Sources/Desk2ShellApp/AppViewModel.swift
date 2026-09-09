@@ -4,11 +4,14 @@ import SwiftUI
 
 @MainActor
 final class AppViewModel: ObservableObject {
+    @Published var language: AppLanguage {
+        didSet { UserDefaults.standard.set(language.rawValue, forKey: AppLanguage.defaultsKey) }
+    }
     @Published var targetAlias = ""
     @Published var authKey = ""
     @Published var windowsUser = ""
     @Published var durationHours = 24
-    @Published var status = "正在检查 Tailscale…"
+    @Published private var statusMessage = BilingualText("正在检查 Tailscale…", "Checking Tailscale…")
     @Published var pairingCode = ""
     @Published var packagePath = ""
     @Published var targetIPv4 = ""
@@ -23,9 +26,29 @@ final class AppViewModel: ObservableObject {
     private var pairingKey = Data()
 
     init() {
+        language = AppLanguage.preferred
         telemetryOptIn = TelemetryClient.shared.isEnabled
         preparePairingCode()
         Task { await preflight() }
+    }
+
+    var status: String { statusMessage.value(for: language) }
+    var statusIsSuccess: Bool { statusMessage.isSuccess }
+
+    func text(_ chinese: String, _ english: String) -> String {
+        language.text(chinese, english)
+    }
+
+    private func setStatus(_ chinese: String, _ english: String, isSuccess: Bool = false) {
+        statusMessage = BilingualText(chinese, english, isSuccess: isSuccess)
+    }
+
+    private func setError(_ error: Error) {
+        if let error = error as? Desk2ShellError {
+            statusMessage = error.message
+        } else {
+            statusMessage = BilingualText(error.localizedDescription, error.localizedDescription)
+        }
     }
 
     private func preparePairingCode() {
@@ -34,16 +57,16 @@ final class AppViewModel: ObservableObject {
             pairingKey = pairing.key
             pairingCode = pairing.display
         } catch {
-            status = error.localizedDescription
+            setError(error)
         }
     }
 
     func preflight() async {
         do {
             let snapshot = try services.tailscaleSnapshot()
-            status = "Tailscale 已连接：\(snapshot.controllerIPv4)"
+            setStatus("Tailscale 已连接：\(snapshot.controllerIPv4)", "Tailscale connected: \(snapshot.controllerIPv4)")
         } catch {
-            status = error.localizedDescription
+            setError(error)
         }
     }
 
@@ -54,7 +77,12 @@ final class AppViewModel: ObservableObject {
         do {
             guard ControllerServices.validAlias(targetAlias) else { throw Desk2ShellError.invalidAlias }
             guard authKey.hasPrefix("tskey-auth-") || authKey.hasPrefix("tskey-client-") else { throw Desk2ShellError.invalidAuthKey }
-            guard (1...168).contains(durationHours) else { throw Desk2ShellError.commandFailed("有效期必须在 1–168 小时之间。") }
+            guard (1...168).contains(durationHours) else {
+                throw Desk2ShellError.commandFailed(BilingualText(
+                    "有效期必须在 1–168 小时之间。",
+                    "The access duration must be between 1 and 168 hours."
+                ))
+            }
 
             if !packagePath.isEmpty || pairingKey.count != 32 {
                 preparePairingCode()
@@ -99,18 +127,24 @@ final class AppViewModel: ObservableObject {
             record = newRecord
             packagePath = destination.path
             authKey = ""
-            status = "安装包已生成。传到 Windows 后粘贴下方配对码。"
+            setStatus(
+                "安装包已生成。传到 Windows 后粘贴下方配对码。",
+                "The setup package is ready. Transfer it to Windows, then paste the pairing code below."
+            )
             TelemetryClient.shared.send(event: "package_created")
             startPolling()
         } catch {
-            status = error.localizedDescription
+            setError(error)
         }
     }
 
     func openTailscaleAuthKeyPage() {
         guard let url = URL(string: "https://login.tailscale.com/admin/settings/keys") else { return }
         NSWorkspace.shared.open(url)
-        status = "请创建一次性、短有效期、不要勾选 Ephemeral 的 Auth Key，然后返回粘贴。"
+        setStatus(
+            "请创建一次性、短有效期、不要勾选 Ephemeral 的 Auth Key，然后返回粘贴。",
+            "Create a one-off, short-lived Auth Key without Ephemeral enabled, then return and paste it."
+        )
     }
 
     func pasteAuthKey() {
@@ -118,17 +152,26 @@ final class AppViewModel: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines),
               value.hasPrefix("tskey-auth-") || value.hasPrefix("tskey-client-")
         else {
-            status = "剪贴板里没有可识别的 Tailscale Auth Key。"
+            setStatus(
+                "剪贴板里没有可识别的 Tailscale Auth Key。",
+                "The clipboard does not contain a recognized Tailscale Auth Key."
+            )
             return
         }
         authKey = value
-        status = "Auth Key 已粘贴；生成安装包后会立即从界面清除。"
+        setStatus(
+            "Auth Key 已粘贴；生成安装包后会立即从界面清除。",
+            "Auth Key pasted. It will be cleared from the interface after the package is generated."
+        )
     }
 
     func copyPairingCode() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(pairingCode, forType: .string)
-        status = "配对码已复制；安装完成后会自动清除剪贴板。"
+        setStatus(
+            "配对码已复制；安装完成后会自动清除剪贴板。",
+            "Pairing code copied. The clipboard will be cleared automatically after setup."
+        )
         let copied = pairingCode
         Task {
             try? await Task.sleep(for: .seconds(120))
@@ -139,7 +182,10 @@ final class AppViewModel: ObservableObject {
     }
 
     func checkConnection() {
-        guard let record else { status = "请先生成安装包。"; return }
+        guard let record else {
+            setStatus("请先生成安装包。", "Generate the setup package first.")
+            return
+        }
         busy = true
         defer { busy = false }
         do {
@@ -148,17 +194,26 @@ final class AppViewModel: ObservableObject {
                 return
             }
             guard let ip = try services.findTargetIPv4(alias: record.targetAlias) else {
-                status = "尚未发现目标机；保持 Windows 完成页打开后重试。"
+                setStatus(
+                    "尚未发现目标机；保持 Windows 完成页打开后重试。",
+                    "The target has not been found yet. Keep the Windows completion page open and try again."
+                )
                 return
             }
             targetIPv4 = ip
             guard !windowsUser.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                status = "已发现 \(ip)，但还没收到 Taildrop 结果。可重试或手动导入 desk2shell-result.json。"
+                setStatus(
+                    "已发现 \(ip)，但还没收到 Taildrop 结果。可重试或手动导入 desk2shell-result.json。",
+                    "Found \(ip), but the Taildrop result has not arrived. Try again or import desk2shell-result.json manually."
+                )
                 return
             }
-            status = "已发现目标，但没有可验证的主机指纹。请导入 Windows 生成的 desk2shell-result.json。"
+            setStatus(
+                "已发现目标，但没有可验证的主机指纹。请导入 Windows 生成的 desk2shell-result.json。",
+                "The target was found, but no verifiable host fingerprint is available. Import the desk2shell-result.json generated on Windows."
+            )
         } catch {
-            status = error.localizedDescription
+            setError(error)
         }
     }
 
@@ -170,13 +225,16 @@ final class AppViewModel: ObservableObject {
                 try? await Task.sleep(for: .seconds(5))
                 guard let self, !self.busy else { continue }
                 self.checkConnection()
-                if self.status.hasPrefix("连接成功") { return }
+                if self.statusIsSuccess { return }
             }
         }
     }
 
     func importResult() {
-        guard let record else { status = "请先生成安装包。"; return }
+        guard let record else {
+            setStatus("请先生成安装包。", "Generate the setup package first.")
+            return
+        }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
@@ -184,13 +242,16 @@ final class AppViewModel: ObservableObject {
         do {
             try finalize(result: services.readTargetResult(url: url, enrollmentId: record.id), record: record)
         } catch {
-            status = error.localizedDescription
+            setError(error)
         }
     }
 
     private func finalize(result: TargetResult, record: EnrollmentRecord) throws {
         guard result.targetAlias == record.targetAlias else {
-            throw Desk2ShellError.commandFailed("结果文件中的目标名与当前 enrollment 不匹配。")
+            throw Desk2ShellError.commandFailed(BilingualText(
+                "结果文件中的目标名与当前 enrollment 不匹配。",
+                "The target name in the result file does not match the current enrollment."
+            ))
         }
         targetIPv4 = result.tailscaleIPv4
         windowsUser = result.windowsUser
@@ -206,7 +267,11 @@ final class AppViewModel: ObservableObject {
         self.record = updated
         pollingTask?.cancel()
         NSPasteboard.general.clearContents()
-        status = "连接成功：\(identity)。现在可使用 ssh \(record.targetAlias)。"
+        setStatus(
+            "连接成功：\(identity)。现在可使用 ssh \(record.targetAlias)。",
+            "Connected as \(identity). You can now use ssh \(record.targetAlias).",
+            isSuccess: true
+        )
         TelemetryClient.shared.send(event: "ssh_verified")
     }
 
@@ -219,6 +284,6 @@ final class AppViewModel: ObservableObject {
         guard let record else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString("ssh \(record.targetAlias)", forType: .string)
-        status = "SSH 命令已复制。"
+        setStatus("SSH 命令已复制。", "SSH command copied.")
     }
 }

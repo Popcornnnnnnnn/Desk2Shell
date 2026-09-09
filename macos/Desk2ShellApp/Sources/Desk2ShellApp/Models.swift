@@ -52,28 +52,41 @@ struct TargetResult: Codable, Equatable {
 enum Desk2ShellError: LocalizedError {
     case invalidAlias
     case invalidAuthKey
-    case tailscaleUnavailable(String)
+    case tailscaleUnavailable(BilingualText)
     case bootstrapMissing
-    case commandFailed(String)
+    case commandFailed(BilingualText)
     case invalidPairingCode
     case invalidEnvelope
 
     var errorDescription: String? {
+        message.value(for: AppLanguage.preferred)
+    }
+
+    var message: BilingualText {
         switch self {
         case .invalidAlias:
-            return "设备名只能包含字母、数字和连字符，长度 1–63。"
+            return BilingualText(
+                "设备名只能包含字母、数字和连字符，长度 1–63。",
+                "The device name must be 1–63 characters using only letters, numbers, and hyphens."
+            )
         case .invalidAuthKey:
-            return "请输入一次性 Tailscale Auth Key。"
+            return BilingualText("请输入一次性 Tailscale Auth Key。", "Enter a one-off Tailscale Auth Key.")
         case .tailscaleUnavailable(let reason):
-            return "Tailscale 尚未就绪：\(reason)"
+            return BilingualText(
+                "Tailscale 尚未就绪：\(reason.chinese)",
+                "Tailscale is not ready: \(reason.english)"
+            )
         case .bootstrapMissing:
-            return "缺少 Windows Bootstrap。请先运行 scripts/package-release.sh。"
+            return BilingualText(
+                "缺少 Windows Bootstrap。请先运行 scripts/package-release.sh。",
+                "Windows Bootstrap is missing. Run scripts/package-release.sh first."
+            )
         case .commandFailed(let message):
             return message
         case .invalidPairingCode:
-            return "配对码格式无效。"
+            return BilingualText("配对码格式无效。", "The pairing code is invalid.")
         case .invalidEnvelope:
-            return "Enrollment 文件无效。"
+            return BilingualText("Enrollment 文件无效。", "The enrollment file is invalid.")
         }
     }
 }

@@ -13,20 +13,22 @@ final class ControllerServices {
         let cli = try tailscaleCLI()
         let ip = try ProcessRunner.checked(cli, ["ip", "-4"])
             .split(whereSeparator: \Character.isWhitespace).first.map(String.init) ?? ""
-        guard Self.validIPv4(ip) else { throw Desk2ShellError.tailscaleUnavailable("没有活动的 IPv4 地址") }
+        guard Self.validIPv4(ip) else {
+            throw Desk2ShellError.tailscaleUnavailable(BilingualText("没有活动的 IPv4 地址", "no active IPv4 address"))
+        }
 
         let statusText = try ProcessRunner.checked(cli, ["status", "--json"])
         guard let data = statusText.data(using: .utf8),
               let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let selfNode = json["Self"] as? [String: Any]
-        else { throw Desk2ShellError.tailscaleUnavailable("无法读取状态") }
+        else { throw Desk2ShellError.tailscaleUnavailable(BilingualText("无法读取状态", "unable to read status")) }
 
         let nodeName = (selfNode["HostName"] as? String)
             ?? (selfNode["DNSName"] as? String)?.split(separator: ".").first.map(String.init)
             ?? ""
         let tailnet = (json["CurrentTailnet"] as? [String: Any])?["Name"] as? String ?? ""
         guard !nodeName.isEmpty, !tailnet.isEmpty else {
-            throw Desk2ShellError.tailscaleUnavailable("无法识别当前 tailnet")
+            throw Desk2ShellError.tailscaleUnavailable(BilingualText("无法识别当前 tailnet", "unable to identify the current tailnet"))
         }
         return TailscaleSnapshot(controllerIPv4: ip, controllerNodeName: nodeName, tailnetName: tailnet)
     }
@@ -38,7 +40,7 @@ final class ControllerServices {
 
         var passphraseBytes = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, passphraseBytes.count, &passphraseBytes) == errSecSuccess else {
-            throw Desk2ShellError.commandFailed("无法生成 SSH 密钥口令。")
+            throw Desk2ShellError.commandFailed(BilingualText("无法生成 SSH 密钥口令。", "Unable to generate the SSH key passphrase."))
         }
         let passphrase = Data(passphraseBytes).base64EncodedString()
         try KeychainStore.save(Data(passphrase.utf8), account: enrollmentId)
@@ -56,7 +58,10 @@ final class ControllerServices {
         ])
         guard result.exitCode == 0 else {
             try? fileManager.removeItem(at: privateKey)
-            throw Desk2ShellError.commandFailed("SSH 密钥生成失败：\(result.stderr)")
+            throw Desk2ShellError.commandFailed(BilingualText(
+                "SSH 密钥生成失败：\(result.stderr)",
+                "SSH key generation failed: \(result.stderr)"
+            ))
         }
         try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: privateKey.path)
         let publicKey = try String(contentsOf: privateKey.appendingPathExtension("pub"), encoding: .utf8)
@@ -90,7 +95,12 @@ final class ControllerServices {
         """
         try Data(instructions.utf8).write(to: folder.appendingPathComponent("README.txt"), options: .atomic)
         let result = try ProcessRunner.run("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", folder.path, destination.path])
-        guard result.exitCode == 0 else { throw Desk2ShellError.commandFailed("无法创建 ZIP：\(result.stderr)") }
+        guard result.exitCode == 0 else {
+            throw Desk2ShellError.commandFailed(BilingualText(
+                "无法创建 ZIP：\(result.stderr)",
+                "Unable to create the ZIP: \(result.stderr)"
+            ))
+        }
     }
 
     func store(record: EnrollmentRecord) throws {
@@ -104,7 +114,7 @@ final class ControllerServices {
 
     func installSSHConfig(alias: String, host: String, user: String, keyPath: String) throws {
         guard Self.validAlias(alias), Self.validIPv4(host), !user.isEmpty else {
-            throw Desk2ShellError.commandFailed("SSH 配置参数无效。")
+            throw Desk2ShellError.commandFailed(BilingualText("SSH 配置参数无效。", "The SSH configuration parameters are invalid."))
         }
         let sshDirectory = fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".ssh", isDirectory: true)
         try fileManager.createDirectory(at: sshDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -158,7 +168,10 @@ final class ControllerServices {
             "whoami"
         ])
         guard output.lowercased().hasSuffix(expectedUser.lowercased()) else {
-            throw Desk2ShellError.commandFailed("SSH 已连接，但远端身份为 \(output)，不是 \(expectedUser)。")
+            throw Desk2ShellError.commandFailed(BilingualText(
+                "SSH 已连接，但远端身份为 \(output)，不是 \(expectedUser)。",
+                "SSH connected, but the remote identity is \(output), not \(expectedUser)."
+            ))
         }
         return output
     }
@@ -183,21 +196,32 @@ final class ControllerServices {
         guard result.schemaVersion == 1, result.enrollmentId == enrollmentId,
               result.sshPort == 2222, Self.validIPv4(result.tailscaleIPv4),
               !result.windowsUser.isEmpty else {
-            throw Desk2ShellError.commandFailed("Windows 结果文件与当前 enrollment 不匹配。")
+            throw Desk2ShellError.commandFailed(BilingualText(
+                "Windows 结果文件与当前 enrollment 不匹配。",
+                "The Windows result file does not match the current enrollment."
+            ))
         }
         return result
     }
 
     func pinHostKey(host: String, port: Int, expectedFingerprint: String) throws {
         let scan = try ProcessRunner.checked("/usr/bin/ssh-keyscan", ["-T", "8", "-p", String(port), "-t", "ed25519", host])
-        guard !scan.isEmpty else { throw Desk2ShellError.commandFailed("目标 SSH 服务没有返回主机密钥。") }
+        guard !scan.isEmpty else {
+            throw Desk2ShellError.commandFailed(BilingualText(
+                "目标 SSH 服务没有返回主机密钥。",
+                "The target SSH service did not return a host key."
+            ))
+        }
         let temporary = fileManager.temporaryDirectory.appendingPathComponent("desk2shell-host-\(UUID().uuidString)")
         defer { try? fileManager.removeItem(at: temporary) }
         try Data((scan + "\n").utf8).write(to: temporary, options: .atomic)
         let detail = try ProcessRunner.checked("/usr/bin/ssh-keygen", ["-lf", temporary.path, "-E", "sha256"])
         let actual = detail.split(whereSeparator: \Character.isWhitespace).dropFirst().first.map(String.init) ?? ""
         guard actual == expectedFingerprint else {
-            throw Desk2ShellError.commandFailed("目标主机密钥不匹配；未写入 known_hosts。")
+            throw Desk2ShellError.commandFailed(BilingualText(
+                "目标主机密钥不匹配；未写入 known_hosts。",
+                "The target host key does not match; known_hosts was not modified."
+            ))
         }
 
         let sshDirectory = fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".ssh", isDirectory: true)
@@ -216,7 +240,10 @@ final class ControllerServices {
     func loadKeyIntoAgent(enrollmentId: String, keyPath: String) throws {
         let passphraseData = try KeychainStore.load(account: enrollmentId)
         guard let passphrase = String(data: passphraseData, encoding: .utf8) else {
-            throw Desk2ShellError.commandFailed("无法准备 SSH Keychain 凭据。")
+            throw Desk2ShellError.commandFailed(BilingualText(
+                "无法准备 SSH Keychain 凭据。",
+                "Unable to prepare the SSH Keychain credential."
+            ))
         }
         let askpass = try askpassURL()
         let result = try ProcessRunner.run(
@@ -230,7 +257,10 @@ final class ControllerServices {
             ]
         )
         guard result.exitCode == 0 else {
-            throw Desk2ShellError.commandFailed("无法把设备密钥载入 ssh-agent：\(result.stderr)")
+            throw Desk2ShellError.commandFailed(BilingualText(
+                "无法把设备密钥载入 ssh-agent：\(result.stderr)",
+                "Unable to load the device key into ssh-agent: \(result.stderr)"
+            ))
         }
     }
 
@@ -250,7 +280,7 @@ final class ControllerServices {
             "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
         ]
         guard let path = candidates.first(where: { fileManager.isExecutableFile(atPath: $0) }) else {
-            throw Desk2ShellError.tailscaleUnavailable("未找到 Tailscale CLI")
+            throw Desk2ShellError.tailscaleUnavailable(BilingualText("未找到 Tailscale CLI", "Tailscale CLI was not found"))
         }
         return path
     }
@@ -260,7 +290,10 @@ final class ControllerServices {
             .appendingPathComponent("Resources", isDirectory: true)
             .appendingPathComponent("desk2shell-askpass.sh"),
               fileManager.fileExists(atPath: url.path) else {
-            throw Desk2ShellError.commandFailed("Desk2Shell askpass helper 缺失。")
+            throw Desk2ShellError.commandFailed(BilingualText(
+                "Desk2Shell askpass helper 缺失。",
+                "The Desk2Shell askpass helper is missing."
+            ))
         }
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
         return url

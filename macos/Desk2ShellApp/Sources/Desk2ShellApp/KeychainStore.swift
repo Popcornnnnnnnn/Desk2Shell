@@ -16,7 +16,10 @@ enum KeychainStore {
         insert[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         let status = SecItemAdd(insert as CFDictionary, nil)
         guard status == errSecSuccess else {
-            throw Desk2ShellError.commandFailed("Keychain 写入失败（\(status)）。")
+            throw Desk2ShellError.commandFailed(BilingualText(
+                "Keychain 写入失败（\(status)）。",
+                "Keychain write failed (\(status))."
+            ))
         }
     }
 
@@ -31,7 +34,10 @@ enum KeychainStore {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         guard status == errSecSuccess, let data = item as? Data else {
-            throw Desk2ShellError.commandFailed("无法从 Keychain 读取设备密钥口令。")
+            throw Desk2ShellError.commandFailed(BilingualText(
+                "无法从 Keychain 读取设备密钥口令。",
+                "Unable to read the device key passphrase from Keychain."
+            ))
         }
         return data
     }

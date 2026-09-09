@@ -2,6 +2,10 @@
   <img src="assets/desk2shell-logo.png" alt="Desk2Shell logo" width="112">
 </p>
 
+<p align="center">
+  <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
+</p>
+
 # Desk2Shell
 
 Desk2Shell turns one temporary remote-desktop session into a standard, temporary SSH connection to a Windows computer. The remote-desktop product is only used to transfer and launch the bootstrap package; afterwards Codex, Claude Code, terminals, and IDEs connect using normal SSH over the user's own Tailscale network.
@@ -10,13 +14,14 @@ Desk2Shell turns one temporary remote-desktop session into a standard, temporary
 
 ## Preview
 
-![Desk2Shell 0.1.0 macOS controller showing target and one-time network authorization](docs/media/desk2shell-macos-v0.1.0.png)
+![Desk2Shell macOS controller in English](docs/media/desk2shell-macos-en.png)
 
-_Desk2Shell 0.1.0 developer preview on macOS. Sensitive pairing information is outside the captured area._
+_Desk2Shell development build after v0.1.0 on macOS. Sensitive pairing information is outside the captured area._
 
 ## Product boundary
 
 - Controller: macOS 14 or newer.
+- Interface: switch between English and Simplified Chinese in the macOS controller.
 - Target: Windows 10 22H2 or Windows 11, local and Active Directory accounts.
 - Microsoft Entra-only Windows accounts are rejected because Windows OpenSSH does not support public-key authentication for them.
 - Networking: ordinary OpenSSH over the user's Tailscale network. No public port forwarding, exit node, subnet router, hosted control plane, or Tailscale SSH server.

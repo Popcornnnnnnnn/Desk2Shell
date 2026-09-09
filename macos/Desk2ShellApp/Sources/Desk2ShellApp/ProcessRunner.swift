@@ -43,7 +43,10 @@ enum ProcessRunner {
         let result = try run(executable, arguments, environment: environment)
         guard result.exitCode == 0 else {
             let detail = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw Desk2ShellError.commandFailed(detail.isEmpty ? "命令执行失败：\(executable)" : detail)
+            throw Desk2ShellError.commandFailed(BilingualText(
+                detail.isEmpty ? "命令执行失败：\(executable)" : detail,
+                detail.isEmpty ? "Command failed: \(executable)" : detail
+            ))
         }
         return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
     }
