@@ -62,18 +62,31 @@ struct ContentView: View {
     var body: some View {
         HStack(spacing: 0) {
             sidebar
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
                     header
-                    targetCard
-                    authCard
-                    pairingCard
-                    connectionCard
-                    footer
+                    statusBar
                 }
-                .padding(28)
+                .padding(.horizontal, 28)
+                .padding(.top, 24)
+                .padding(.bottom, 18)
                 .frame(maxWidth: 720)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Divider()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        targetCard
+                        authCard
+                        pairingCard
+                        connectionCard
+                        telemetryFooter
+                    }
+                    .padding(28)
+                    .frame(maxWidth: 720)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
             }
             .background(Color(nsColor: .windowBackgroundColor))
         }
@@ -90,10 +103,10 @@ struct ContentView: View {
                 }
             }
             VStack(alignment: .leading, spacing: 17) {
-                StepRow(number: 1, title: model.text("目标", "Target"), active: model.packagePath.isEmpty)
-                StepRow(number: 2, title: model.text("授权", "Authorize"), active: model.packagePath.isEmpty)
-                StepRow(number: 3, title: model.text("传输", "Transfer"), active: !model.packagePath.isEmpty && model.targetIPv4.isEmpty)
-                StepRow(number: 4, title: model.text("连接", "Connect"), active: !model.targetIPv4.isEmpty)
+                StepRow(number: 1, title: model.text("目标", "Target"), currentStep: model.currentStep)
+                StepRow(number: 2, title: model.text("授权", "Authorize"), currentStep: model.currentStep)
+                StepRow(number: 3, title: model.text("传输", "Transfer"), currentStep: model.currentStep)
+                StepRow(number: 4, title: model.text("连接", "Connect"), currentStep: model.currentStep)
             }
             Picker(model.text("语言", "Language"), selection: $model.language) {
                 Text("中文").tag(AppLanguage.zhHans)
@@ -136,11 +149,38 @@ struct ContentView: View {
         }
     }
 
+    private var statusBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: model.statusIsSuccess ? "checkmark.circle.fill" : "info.circle.fill")
+                .foregroundStyle(model.statusIsSuccess ? .green : Color.accentColor)
+            Text(model.status)
+                .font(.callout)
+                .lineLimit(2)
+                .textSelection(.enabled)
+            Spacer(minLength: 12)
+            if !model.targetIPv4.isEmpty {
+                Text(model.targetIPv4)
+                    .font(.system(.caption, design: .monospaced, weight: .medium))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(.green.opacity(0.12), in: Capsule())
+            }
+        }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 11)
+        .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(Color.accentColor.opacity(0.14))
+        )
+    }
+
     private var targetCard: some View {
         ProductCard(
             number: "01",
             title: model.text("目标与有效期", "Target and duration"),
-            subtitle: model.text("远端账号的现有权限保持不变", "The remote account keeps its existing permissions")
+            subtitle: model.text("远端账号的现有权限保持不变", "The remote account keeps its existing permissions"),
+            active: model.currentStep == 1
         ) {
             HStack(spacing: 12) {
                 TextField(model.text("设备名，例如 lab-win", "Device name, e.g. lab-win"), text: $model.targetAlias)
@@ -163,11 +203,12 @@ struct ContentView: View {
             subtitle: model.text(
                 "此码由 Tailscale 账户签发，Desk2Shell 不会也不能代替账户生成",
                 "Issued by your Tailscale account; Desk2Shell cannot generate it for you"
-            )
+            ),
+            active: model.currentStep == 2
         ) {
             SecureField("tskey-auth-…", text: $model.authKey)
                 .textFieldStyle(.roundedBorder)
-            HStack {
+            HStack(spacing: 12) {
                 Button(model.text("在 Tailscale 创建", "Create in Tailscale"), systemImage: "arrow.up.right.square") {
                     model.openTailscaleAuthKeyPage()
                 }
@@ -175,20 +216,21 @@ struct ContentView: View {
                     model.pasteAuthKey()
                 }
                 Spacer()
-                Button {
-                    model.createPackage()
-                } label: {
-                    Label(
-                        model.busy
-                            ? model.text("正在生成…", "Generating…")
-                            : model.text("生成 Windows 安装包", "Generate Windows Package"),
-                        systemImage: "shippingbox.fill"
-                    )
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(model.busy)
             }
+            Button {
+                model.createPackage()
+            } label: {
+                Label(
+                    model.busy
+                        ? model.text("正在生成…", "Generating…")
+                        : model.text("生成 Windows 安装包", "Generate Windows Package"),
+                    systemImage: "shippingbox.fill"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(model.busy)
             if !model.packagePath.isEmpty {
                 Text(model.packagePath)
                     .font(.caption)
@@ -206,7 +248,8 @@ struct ContentView: View {
             subtitle: model.text(
                 "把 ZIP 传到 Windows 并运行 Bootstrap，再粘贴配对码",
                 "Transfer the ZIP to Windows, run Bootstrap, then paste the pairing code"
-            )
+            ),
+            active: model.currentStep == 3
         ) {
             HStack(spacing: 12) {
                 Text(model.pairingCode.isEmpty ? model.text("正在生成安全配对码…", "Generating a secure pairing code…") : model.pairingCode)
@@ -236,40 +279,41 @@ struct ContentView: View {
             subtitle: model.text(
                 "优先通过 Taildrop 自动收取结果，并固定 SSH 主机指纹",
                 "Receive the result through Taildrop when possible and pin the SSH host fingerprint"
-            )
+            ),
+            active: model.currentStep == 4
         ) {
             HStack {
                 Button(model.text("立即检查", "Check Now"), systemImage: "arrow.clockwise") { model.checkConnection() }
                     .disabled(model.busy || model.packagePath.isEmpty)
                 Button(model.text("导入结果", "Import Result"), systemImage: "square.and.arrow.down") { model.importResult() }
                     .disabled(model.packagePath.isEmpty)
-                Button(model.text("复制 ssh 命令", "Copy ssh Command"), systemImage: "terminal") { model.copySSHCommand() }
-                    .disabled(model.targetIPv4.isEmpty)
                 Spacer()
-                if !model.targetIPv4.isEmpty {
-                    Text(model.targetIPv4)
-                        .font(.system(.caption, design: .monospaced))
-                        .padding(.horizontal, 9).padding(.vertical, 5)
-                        .background(.green.opacity(0.12), in: Capsule())
+            }
+            if let sshCommand = model.sshCommand {
+                HStack(spacing: 12) {
+                    Image(systemName: "terminal")
+                        .foregroundStyle(Color.accentColor)
+                    Text(sshCommand)
+                        .font(.system(.body, design: .monospaced, weight: .medium))
+                        .textSelection(.enabled)
+                    Spacer()
+                    Button(model.text("复制", "Copy"), systemImage: "doc.on.doc") {
+                        model.copySSHCommand()
+                    }
                 }
+                .padding(12)
+                .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
         }
     }
 
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: model.statusIsSuccess ? "checkmark.circle.fill" : "info.circle.fill")
-                    .foregroundStyle(model.statusIsSuccess ? .green : .secondary)
-                Text(model.status).font(.callout).textSelection(.enabled)
-            }
-            Toggle(model.text("自愿发送匿名成功/失败回执", "Voluntarily send anonymous success/failure events"), isOn: Binding(
-                get: { model.telemetryOptIn },
-                set: { model.setTelemetryOptIn($0) }
-            ))
-            .font(.caption)
-            .disabled(!model.telemetryAvailable)
-        }
+    private var telemetryFooter: some View {
+        Toggle(model.text("自愿发送匿名成功/失败回执", "Voluntarily send anonymous success/failure events"), isOn: Binding(
+            get: { model.telemetryOptIn },
+            set: { model.setTelemetryOptIn($0) }
+        ))
+        .font(.caption)
+        .disabled(!model.telemetryAvailable)
         .padding(.horizontal, 2)
     }
 }
@@ -278,12 +322,14 @@ private struct ProductCard<Content: View>: View {
     let number: String
     let title: String
     let subtitle: String
+    let active: Bool
     @ViewBuilder let content: Content
 
-    init(number: String, title: String, subtitle: String, @ViewBuilder content: () -> Content) {
+    init(number: String, title: String, subtitle: String, active: Bool, @ViewBuilder content: () -> Content) {
         self.number = number
         self.title = title
         self.subtitle = subtitle
+        self.active = active
         self.content = content()
     }
 
@@ -303,8 +349,14 @@ private struct ProductCard<Content: View>: View {
             content
         }
         .padding(17)
-        .background(.background, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(.primary.opacity(0.07)))
+        .background(
+            active ? Color.accentColor.opacity(0.035) : Color(nsColor: .controlBackgroundColor),
+            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .stroke(active ? Color.accentColor.opacity(0.32) : Color.primary.opacity(0.07))
+        )
         .shadow(color: .black.opacity(0.04), radius: 10, y: 4)
     }
 }
@@ -312,17 +364,26 @@ private struct ProductCard<Content: View>: View {
 private struct StepRow: View {
     let number: Int
     let title: String
-    let active: Bool
+    let currentStep: Int
+
+    private var active: Bool { number == currentStep }
+    private var completed: Bool { number < currentStep }
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(String(number))
-                .font(.caption.weight(.bold))
-                .frame(width: 24, height: 24)
-                .background(active ? Color.white : Color.white.opacity(0.1), in: Circle())
-                .foregroundStyle(active ? Color(red: 0.05, green: 0.18, blue: 0.28) : .white.opacity(0.55))
+            Group {
+                if completed {
+                    Image(systemName: "checkmark")
+                } else {
+                    Text(String(number))
+                }
+            }
+            .font(.caption.weight(.bold))
+            .frame(width: 24, height: 24)
+            .background(active ? Color.white : Color.white.opacity(completed ? 0.18 : 0.1), in: Circle())
+            .foregroundStyle(active ? Color(red: 0.05, green: 0.18, blue: 0.28) : .white.opacity(completed ? 0.8 : 0.5))
             Text(title).font(.callout.weight(active ? .semibold : .regular))
-                .foregroundStyle(.white.opacity(active ? 1 : 0.55))
+                .foregroundStyle(.white.opacity(active ? 1 : completed ? 0.78 : 0.5))
         }
     }
 }
@@ -333,9 +394,9 @@ private struct BrandIcon: View {
     private var logo: NSImage? {
         let bundle = Bundle.module
         let candidates = [
-            bundle.url(forResource: "Desk2ShellLogo", withExtension: "png", subdirectory: "Resources"),
-            bundle.resourceURL?.appendingPathComponent("Desk2ShellLogo.png"),
-            bundle.bundleURL.appendingPathComponent("Resources/Desk2ShellLogo.png")
+            bundle.url(forResource: "Desk2ShellLogoMark", withExtension: "png", subdirectory: "Resources"),
+            bundle.resourceURL?.appendingPathComponent("Desk2ShellLogoMark.png"),
+            bundle.bundleURL.appendingPathComponent("Resources/Desk2ShellLogoMark.png")
         ]
         return candidates.compactMap { $0 }.lazy.compactMap(NSImage.init(contentsOf:)).first
     }

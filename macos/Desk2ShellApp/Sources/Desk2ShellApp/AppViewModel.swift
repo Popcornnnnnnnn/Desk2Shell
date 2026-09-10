@@ -34,6 +34,15 @@ final class AppViewModel: ObservableObject {
 
     var status: String { statusMessage.value(for: language) }
     var statusIsSuccess: Bool { statusMessage.isSuccess }
+    var currentStep: Int {
+        if !targetIPv4.isEmpty { return 4 }
+        if !packagePath.isEmpty { return 3 }
+        return targetAlias.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 1 : 2
+    }
+    var sshCommand: String? {
+        guard let record, !targetIPv4.isEmpty else { return nil }
+        return "ssh \(record.targetAlias)"
+    }
 
     func text(_ chinese: String, _ english: String) -> String {
         language.text(chinese, english)
